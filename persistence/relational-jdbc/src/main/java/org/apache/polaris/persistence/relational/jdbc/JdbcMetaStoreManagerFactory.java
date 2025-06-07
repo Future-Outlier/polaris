@@ -38,7 +38,6 @@ import org.apache.polaris.core.entity.PolarisEntity;
 import org.apache.polaris.core.entity.PolarisEntityConstants;
 import org.apache.polaris.core.entity.PolarisEntitySubType;
 import org.apache.polaris.core.entity.PolarisEntityType;
-import org.apache.polaris.core.entity.PolarisPrincipalSecrets;
 import org.apache.polaris.core.persistence.AtomicOperationMetaStoreManager;
 import org.apache.polaris.core.persistence.BasePersistence;
 import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
@@ -94,7 +93,13 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
 
   private void initializeForRealm(
       RealmContext realmContext, RootCredentialsSet rootCredentialsSet, boolean isBootstrap) {
-    DatasourceOperations databaseOperations = getDatasourceOperations(isBootstrap);
+    DatabaseType databaseType;
+    try {
+      databaseType = getDatabaseType();
+    } catch (SQLException e) {
+      throw new RuntimeException(e);
+    }
+    DatasourceOperations databaseOperations = getDatasourceOperations(isBootstrap, databaseType);
     sessionSupplierMap.put(
         realmContext.getRealmIdentifier(),
         () ->
@@ -115,14 +120,13 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
     }
   }
 
-  private DatasourceOperations getDatasourceOperations(boolean isBootstrap) {
+  private DatasourceOperations getDatasourceOperations(
+      boolean isBootstrap, DatabaseType databaseType) {
     DatasourceOperations databaseOperations =
-        new DatasourceOperations(dataSource.get(), relationalJdbcConfiguration);
+        new DatasourceOperations(dataSource.get(), databaseType, relationalJdbcConfiguration);
     if (isBootstrap) {
       try {
-        DatabaseType databaseType = getDatabaseType();
-        databaseOperations.executeScript(
-            String.format("%s/schema-v1.sql", databaseType.getDisplayName()));
+        databaseOperations.executeScript(databaseType.getInitScriptResource());
       } catch (SQLException e) {
         throw new RuntimeException(
             String.format("Error executing sql script: %s", e.getMessage()), e);
@@ -155,10 +159,11 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
     Map<String, BaseResult> results = new HashMap<>();
 
     for (String realm : realms) {
-      PolarisMetaStoreManager metaStoreManager = getOrCreateMetaStoreManager(() -> realm);
-      BasePersistence session = getOrCreateSessionSupplier(() -> realm).get();
+      RealmContext realmContext = () -> realm;
+      PolarisMetaStoreManager metaStoreManager = getOrCreateMetaStoreManager(realmContext);
+      BasePersistence session = getOrCreateSessionSupplier(realmContext).get();
 
-      PolarisCallContext callContext = new PolarisCallContext(session, diagServices);
+      PolarisCallContext callContext = new PolarisCallContext(realmContext, session, diagServices);
       BaseResult result = metaStoreManager.purge(callContext);
       results.put(realm, result);
 
@@ -219,8 +224,7 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
 
   /**
    * This method bootstraps service for a given realm: i.e. creates all the needed entities in the
-   * metastore and creates a root service principal. After that we rotate the root principal
-   * credentials.
+   * metastore and creates a root service principal.
    */
   private PrincipalSecretsResult bootstrapServiceAndCreatePolarisPrincipalForRealm(
       RealmContext realmContext, PolarisMetaStoreManager metaStoreManager) {
@@ -228,9 +232,11 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
     // CallContext may not have been resolved yet.
     PolarisCallContext polarisContext =
         new PolarisCallContext(
-            sessionSupplierMap.get(realmContext.getRealmIdentifier()).get(), diagServices);
+            realmContext,
+            sessionSupplierMap.get(realmContext.getRealmIdentifier()).get(),
+            diagServices);
     if (CallContext.getCurrentContext() == null) {
-      CallContext.setCurrentContext(CallContext.of(realmContext, polarisContext));
+      CallContext.setCurrentContext(polarisContext);
     }
 
     EntityResult preliminaryRootPrincipalLookup =
@@ -257,22 +263,13 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
             PolarisEntityType.PRINCIPAL,
             PolarisEntitySubType.NULL_SUBTYPE,
             PolarisEntityConstants.getRootPrincipalName());
-    PolarisPrincipalSecrets secrets =
-        metaStoreManager
-            .loadPrincipalSecrets(
-                polarisContext,
-                PolarisEntity.of(rootPrincipalLookup.getEntity())
-                    .getInternalPropertiesAsMap()
-                    .get(PolarisEntityConstants.getClientIdPropertyName()))
-            .getPrincipalSecrets();
-    PrincipalSecretsResult rotatedSecrets =
-        metaStoreManager.rotatePrincipalSecrets(
+    PrincipalSecretsResult secrets =
+        metaStoreManager.loadPrincipalSecrets(
             polarisContext,
-            secrets.getPrincipalClientId(),
-            secrets.getPrincipalId(),
-            false,
-            secrets.getMainSecretHash());
-    return rotatedSecrets;
+            PolarisEntity.of(rootPrincipalLookup.getEntity())
+                .getInternalPropertiesAsMap()
+                .get(PolarisEntityConstants.getClientIdPropertyName()));
+    return secrets;
   }
 
   /**
@@ -286,9 +283,11 @@ public class JdbcMetaStoreManagerFactory implements MetaStoreManagerFactory {
       RealmContext realmContext, PolarisMetaStoreManager metaStoreManager) {
     PolarisCallContext polarisContext =
         new PolarisCallContext(
-            sessionSupplierMap.get(realmContext.getRealmIdentifier()).get(), diagServices);
+            realmContext,
+            sessionSupplierMap.get(realmContext.getRealmIdentifier()).get(),
+            diagServices);
     if (CallContext.getCurrentContext() == null) {
-      CallContext.setCurrentContext(CallContext.of(realmContext, polarisContext));
+      CallContext.setCurrentContext(polarisContext);
     }
 
     EntityResult rootPrincipalLookup =

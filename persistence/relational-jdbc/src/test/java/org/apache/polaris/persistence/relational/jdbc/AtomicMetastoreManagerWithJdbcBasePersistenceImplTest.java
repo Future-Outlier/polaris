@@ -28,6 +28,7 @@ import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisDefaultDiagServiceImpl;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.config.PolarisConfigurationStore;
+import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.AtomicOperationMetaStoreManager;
 import org.apache.polaris.core.persistence.BasePolarisMetaStoreManagerTest;
 import org.apache.polaris.core.persistence.PolarisTestMetaStoreManager;
@@ -45,7 +46,7 @@ public class AtomicMetastoreManagerWithJdbcBasePersistenceImplTest
   protected PolarisTestMetaStoreManager createPolarisTestMetaStoreManager() {
     PolarisDiagnostics diagServices = new PolarisDefaultDiagServiceImpl();
     DatasourceOperations datasourceOperations =
-        new DatasourceOperations(createH2DataSource(), new H2JdbcConfiguration());
+        new DatasourceOperations(createH2DataSource(), DatabaseType.H2, new H2JdbcConfiguration());
     try {
       datasourceOperations.executeScript(
           String.format("%s/schema-v1.sql", DatabaseType.H2.getDisplayName()));
@@ -56,11 +57,17 @@ public class AtomicMetastoreManagerWithJdbcBasePersistenceImplTest
           e);
     }
 
+    RealmContext realmContext = () -> "REALM";
     JdbcBasePersistenceImpl basePersistence =
-        new JdbcBasePersistenceImpl(datasourceOperations, RANDOM_SECRETS, Mockito.mock(), "REALM");
+        new JdbcBasePersistenceImpl(
+            datasourceOperations,
+            RANDOM_SECRETS,
+            Mockito.mock(),
+            realmContext.getRealmIdentifier());
     return new PolarisTestMetaStoreManager(
         new AtomicOperationMetaStoreManager(),
         new PolarisCallContext(
+            realmContext,
             basePersistence,
             diagServices,
             new PolarisConfigurationStore() {},
