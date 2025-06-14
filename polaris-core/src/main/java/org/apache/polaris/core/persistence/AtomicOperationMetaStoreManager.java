@@ -1517,7 +1517,7 @@ public class AtomicOperationMetaStoreManager extends BaseMetaStoreManager {
                   callCtx
                       .getConfigurationStore()
                       .getConfiguration(
-                          callCtx,
+                          callCtx.getRealmContext(),
                           PolarisTaskConstants.TASK_TIMEOUT_MILLIS_CONFIG,
                           PolarisTaskConstants.TASK_TIMEOUT_MILLIS);
               return taskState == null
@@ -1619,7 +1619,7 @@ public class AtomicOperationMetaStoreManager extends BaseMetaStoreManager {
     try {
       EnumMap<StorageAccessProperty, String> creds =
           storageIntegration.getSubscopedCreds(
-              callCtx.getDiagServices(),
+              callCtx,
               storageConfigurationInfo,
               allowListOperation,
               allowedReadLocations,

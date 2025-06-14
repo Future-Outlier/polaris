@@ -95,8 +95,9 @@ public class QuarkusProducers {
 
   @Produces
   @ApplicationScoped
-  public StorageCredentialCache storageCredentialCache() {
-    return new StorageCredentialCache();
+  public StorageCredentialCache storageCredentialCache(
+      RealmContext realmContext, PolarisConfigurationStore configurationStore) {
+    return new StorageCredentialCache(realmContext, configurationStore);
   }
 
   @Produces
@@ -121,7 +122,7 @@ public class QuarkusProducers {
 
   @Produces
   @RequestScoped
-  public PolarisCallContext polarisCallContext(
+  public CallContext polarisCallContext(
       RealmContext realmContext,
       PolarisDiagnostics diagServices,
       PolarisConfigurationStore configurationStore,
@@ -129,13 +130,8 @@ public class QuarkusProducers {
       Clock clock) {
     BasePersistence metaStoreSession =
         metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get();
-    return new PolarisCallContext(metaStoreSession, diagServices, configurationStore, clock);
-  }
-
-  @Produces
-  @RequestScoped
-  public CallContext callContext(RealmContext realmContext, PolarisCallContext polarisCallContext) {
-    return CallContext.of(realmContext, polarisCallContext);
+    return new PolarisCallContext(
+        realmContext, metaStoreSession, diagServices, configurationStore, clock);
   }
 
   // Polaris service beans - selected from @Identifier-annotated beans
