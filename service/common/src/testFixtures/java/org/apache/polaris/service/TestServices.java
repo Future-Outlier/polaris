@@ -154,7 +154,7 @@ public record TestServices(
               () -> GoogleCredentials.create(new AccessToken(GCP_ACCESS_TOKEN, new Date())));
       InMemoryPolarisMetaStoreManagerFactory metaStoreManagerFactory =
           new InMemoryPolarisMetaStoreManagerFactory(
-              storageIntegrationProvider, polarisDiagnostics);
+              storageIntegrationProvider, polarisDiagnostics, configurationStore);
       RealmEntityManagerFactory realmEntityManagerFactory =
           new RealmEntityManagerFactory(metaStoreManagerFactory) {};
       UserSecretsManagerFactory userSecretsManagerFactory =
@@ -163,21 +163,12 @@ public record TestServices(
       BasePersistence metaStoreSession =
           metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get();
       CallContext callContext =
-          new CallContext() {
-            @Override
-            public RealmContext getRealmContext() {
-              return realmContext;
-            }
-
-            @Override
-            public PolarisCallContext getPolarisCallContext() {
-              return new PolarisCallContext(
-                  metaStoreSession,
-                  polarisDiagnostics,
-                  configurationStore,
-                  Mockito.mock(Clock.class));
-            }
-          };
+          new PolarisCallContext(
+              realmContext,
+              metaStoreSession,
+              polarisDiagnostics,
+              configurationStore,
+              Clock.systemUTC());
       PolarisEntityManager entityManager =
           realmEntityManagerFactory.getOrCreateEntityManager(realmContext);
       PolarisMetaStoreManager metaStoreManager =

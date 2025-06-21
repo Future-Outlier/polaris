@@ -71,7 +71,7 @@ bin/spark-shell \
 --conf spark.sql.catalog.<spark-catalog-name>.scope='PRINCIPAL_ROLE:ALL' \
 --conf spark.sql.catalog.<spark-catalog-name>.token-refresh-enabled=true
 ```
-Assume the released Polaris Spark client you want to use is `org.apache.polaris:polaris-iceberg-1.8.1-spark-runtime-3.5_2.12:1.0.0`,
+Assume the released Polaris Spark client you want to use is `org.apache.polaris:polaris-spark-3.5_2.12:1.0.0`,
 replace the `polaris-spark-client-package` field with the release.
 
 The `spark-catalog-name` is the catalog name you will use with Spark, and `polaris-catalog-name` is the catalog name used 
@@ -128,3 +128,14 @@ The Polaris Spark client has the following functionality limitations:
 3) Rename a Delta table is not supported.
 4) ALTER TABLE ... SET LOCATION is not supported for DELTA table.
 5) For other non-Iceberg tables like csv, it is not supported.
+
+## Iceberg Spark Client compatibility with Polaris Spark Client
+The Polaris Spark client today depends on a specific Iceberg client version, and the version dependency is described
+in the following table:
+
+| Spark Client Version | Iceberg Spark Client Version |
+|----------------------|------------------------------|
+| 1.0.0                | 1.9.0                        |
+
+The Iceberg dependency is automatically downloaded when the Polaris package is downloaded, so there is no need to
+add the Iceberg Spark client in the `packages` configuration.

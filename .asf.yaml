@@ -54,7 +54,9 @@ github:
         # of the job's `name` property if it's present.
         contexts:
           - markdown-link-check
-          - build
+          - "Unit Tests"
+          - "Quarkus Tests"
+          - "Integration Tests"
           - regtest
           - spark-plugin-regtest
           - site
@@ -72,7 +74,6 @@ github:
   collaborators:
     # Adding renovate-bot as a collaborator, so CI doesn't need to be manually approved
     - renovate-bot
-    - gh-yzou
     - nssalian
     - adnanhemani
 

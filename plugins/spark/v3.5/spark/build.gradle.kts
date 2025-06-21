@@ -19,7 +19,10 @@
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
-plugins { id("polaris-client") }
+plugins {
+  id("polaris-client")
+  id("com.gradleup.shadow")
+}
 
 // get version information
 val sparkMajorVersion = "3.5"
@@ -112,52 +115,17 @@ dependencies {
   }
 }
 
-// TODO: replace the check using gradlew checkstyle plugin
-tasks.register("checkNoDisallowedImports") {
-  doLast {
-    // List of disallowed imports. Right now, we disallow usage of shaded or
-    // relocated libraries in the iceberg spark runtime jar.
-    val disallowedImports =
-      listOf("import org.apache.iceberg.shaded.", "org.apache.iceberg.relocated.")
-
-    // Directory to scan for Java files
-    val sourceDirs = listOf(file("src/main/java"), file("src/test/java"))
-
-    val violations = mutableListOf<String>()
-    // Scan Java files in each directory
-    sourceDirs.forEach { sourceDir ->
-      fileTree(sourceDir)
-        .matching {
-          include("**/*.java") // Only include Java files
-        }
-        .forEach { file ->
-          val content = file.readText()
-          disallowedImports.forEach { importStatement ->
-            if (content.contains(importStatement)) {
-              violations.add(
-                "Disallowed import found in ${file.relativeTo(projectDir)}: $importStatement"
-              )
-            }
-          }
-        }
-    }
-
-    if (violations.isNotEmpty()) {
-      throw GradleException("Disallowed imports found! $violations")
-    }
-  }
-}
-
-tasks.named("check") { dependsOn("checkNoDisallowedImports") }
-
-tasks.register<ShadowJar>("createPolarisSparkJar") {
-  archiveClassifier = null
-  archiveBaseName =
-    "polaris-iceberg-${icebergVersion}-spark-runtime-${sparkMajorVersion}_${scalaVersion}"
+tasks.named<ShadowJar>("shadowJar") {
+  archiveClassifier = "bundle"
   isZip64 = true
 
-  // pack both the source code and dependencies
+  // include the LICENSE and NOTICE files for the shadow Jar
+  from(projectDir) {
+    include("LICENSE")
+    include("NOTICE")
+  }
 
+  // pack both the source code and dependencies
   from(sourceSets.main.get().output)
   configurations = listOf(project.configurations.runtimeClasspath.get())
 
@@ -170,8 +138,11 @@ tasks.register<ShadowJar>("createPolarisSparkJar") {
     exclude(dependency("org.apache.avro:avro*.*"))
   }
 
-  relocate("com.fasterxml", "org.apache.polaris.shaded.com.fasterxml.jackson")
+  relocate("com.fasterxml", "org.apache.polaris.shaded.com.fasterxml")
   relocate("org.apache.avro", "org.apache.polaris.shaded.org.apache.avro")
 }
 
-tasks.withType(Jar::class).named("sourcesJar") { dependsOn("createPolarisSparkJar") }
+// ensure the shadowJar job is run for both `assemble` and `build` task
+tasks.named("assemble") { dependsOn("shadowJar") }
+
+tasks.named("build") { dependsOn("shadowJar") }
