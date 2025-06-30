@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisDefaultDiagServiceImpl;
-import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.config.PolarisConfigurationStore;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
@@ -96,17 +95,19 @@ class InMemoryStorageIntegrationTest {
     Map<String, Boolean> config = Map.of("ALLOW_WILDCARD_LOCATION", true);
     PolarisCallContext polarisCallContext =
         new PolarisCallContext(
+            () -> "testRealm",
             Mockito.mock(),
             new PolarisDefaultDiagServiceImpl(),
             new PolarisConfigurationStore() {
               @SuppressWarnings("unchecked")
               @Override
-              public <T> @Nullable T getConfiguration(RealmContext ctx, String configName) {
+              public <T> @Nullable T getConfiguration(
+                  @Nonnull RealmContext ctx, String configName) {
                 return (T) config.get(configName);
               }
             },
             Clock.systemUTC());
-    CallContext.setCurrentContext(CallContext.of(() -> "realm", polarisCallContext));
+    CallContext.setCurrentContext(polarisCallContext);
     Map<String, Map<PolarisStorageActions, PolarisStorageIntegration.ValidationResult>> result =
         storage.validateAccessToLocations(
             new FileStorageConfigurationInfo(List.of("file://", "*")),
@@ -207,7 +208,7 @@ class InMemoryStorageIntegrationTest {
 
     @Override
     public EnumMap<StorageAccessProperty, String> getSubscopedCreds(
-        @Nonnull PolarisDiagnostics diagnostics,
+        @Nonnull CallContext callContext,
         @Nonnull PolarisStorageConfigurationInfo storageConfig,
         boolean allowListOperation,
         @Nonnull Set<String> allowedReadLocations,

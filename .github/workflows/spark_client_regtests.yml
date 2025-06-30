@@ -43,14 +43,17 @@ jobs:
       - name: Fix permissions
         run: mkdir -p regtests/output && chmod 777 regtests/output && chmod 777 regtests/t_*/ref/*
 
+      - name: Run regeneratePythonClient
+        run: ./gradlew regeneratePythonClient
+
       - name: Project build without testing
         run: ./gradlew assemble
 
       - name: Image build
         run: |
           ./gradlew \
-              :polaris-quarkus-server:assemble \
-              :polaris-quarkus-server:quarkusAppPartsBuild --rerun \
+              :polaris-server:assemble \
+              :polaris-server:quarkusAppPartsBuild --rerun \
               -Dquarkus.container-image.build=true
 
       # NOTE: the regression test runs with spark 3.5.5 and scala 2.12 in Java 17. We also have integration

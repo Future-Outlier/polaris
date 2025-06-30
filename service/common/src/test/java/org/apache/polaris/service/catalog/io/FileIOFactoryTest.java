@@ -44,7 +44,8 @@ import org.apache.polaris.core.admin.model.PolarisCatalog;
 import org.apache.polaris.core.admin.model.StorageConfigInfo;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
-import org.apache.polaris.core.entity.*;
+import org.apache.polaris.core.entity.PolarisBaseEntity;
+import org.apache.polaris.core.entity.TaskEntity;
 import org.apache.polaris.core.persistence.pagination.PageToken;
 import org.apache.polaris.service.TestServices;
 import org.apache.polaris.service.catalog.PolarisPassthroughResolutionView;
@@ -136,24 +137,12 @@ public class FileIOFactoryTest {
             .build();
 
     callContext =
-        new CallContext() {
-          @Override
-          public RealmContext getRealmContext() {
-            return testServices.realmContext();
-          }
-
-          @Override
-          public PolarisCallContext getPolarisCallContext() {
-            return new PolarisCallContext(
-                testServices
-                    .metaStoreManagerFactory()
-                    .getOrCreateSessionSupplier(realmContext)
-                    .get(),
-                testServices.polarisDiagnostics(),
-                testServices.configurationStore(),
-                Mockito.mock(Clock.class));
-          }
-        };
+        new PolarisCallContext(
+            realmContext,
+            testServices.metaStoreManagerFactory().getOrCreateSessionSupplier(realmContext).get(),
+            testServices.polarisDiagnostics(),
+            testServices.configurationStore(),
+            Clock.systemUTC());
   }
 
   @AfterEach
