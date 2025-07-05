@@ -85,7 +85,7 @@ class TestCliParsing(unittest.TestCase):
 
     def _check_usage_output(self, f, needle='usage:'):
         with patch('sys.stdout', new_callable=io.StringIO) as mock_stdout, \
-             patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
             with self.assertRaises(SystemExit) as cm:
                 f()
             self.assertEqual(cm.exception.code, 0)
@@ -259,7 +259,7 @@ class TestCliParsing(unittest.TestCase):
             })
         check_arguments(mock_execute(['catalogs', 'list']), 'list_catalogs')
         check_arguments(mock_execute([
-              '--base-url', 'https://customservice.com/subpath', 'catalogs', 'list']), 'list_catalogs')
+            '--base-url', 'https://customservice.com/subpath', 'catalogs', 'list']), 'list_catalogs')
         check_arguments(mock_execute(['catalogs', 'delete', 'foo']), 'delete_catalog', {
             (0, None): 'foo',
         })
@@ -503,6 +503,85 @@ class TestCliParsing(unittest.TestCase):
                 (2, 'grant.privilege.value'): 'VIEW_FULL_METADATA',
                 (2, 'grant.namespace'): ['a', 'b', 'c'],
                 (2, 'grant.view_name'): 'v',
+            })
+        check_arguments(
+            mock_execute(['catalogs', 'create', 'my-catalog', '--type', 'external',
+                          '--storage-type', 'gcs', '--default-base-location', 'dbl',
+                          '--catalog-connection-type', 'hadoop', '--hadoop-warehouse', 'h',
+                          '--catalog-uri', 'u', '--catalog-authentication-type', 'bearer',
+                          '--catalog-bearer-token', 'b']),
+            'create_catalog', {
+                (0, 'catalog.name'): 'my-catalog',
+                (0, 'catalog.type'): 'EXTERNAL',
+                (0, 'catalog.connection_config_info.connection_type'): 'HADOOP',
+                (0, 'catalog.connection_config_info.warehouse'): 'h',
+                (0, 'catalog.connection_config_info.uri'): 'u',
+            })
+        check_arguments(
+            mock_execute(['catalogs', 'create', 'my-catalog', '--type', 'external',
+                          '--storage-type', 'gcs', '--default-base-location', 'dbl',
+                          '--catalog-connection-type', 'iceberg-rest', '--iceberg-remote-catalog-name', 'i',
+                          '--catalog-uri', 'u', '--catalog-authentication-type', 'bearer',
+                          '--catalog-bearer-token', 'b']),
+            'create_catalog', {
+                (0, 'catalog.name'): 'my-catalog',
+                (0, 'catalog.type'): 'EXTERNAL',
+                (0, 'catalog.connection_config_info.connection_type'): 'ICEBERG_REST',
+                (0, 'catalog.connection_config_info.remote_catalog_name'): 'i',
+                (0, 'catalog.connection_config_info.uri'): 'u',
+            })
+        check_arguments(
+            mock_execute(['catalogs', 'create', 'my-catalog', '--type', 'external',
+                          '--storage-type', 'gcs', '--default-base-location', 'dbl',
+                          '--catalog-connection-type', 'hadoop', '--hadoop-warehouse', 'h',
+                          '--catalog-authentication-type', 'oauth',
+                          '--catalog-token-uri', 'u', '--catalog-client-id', 'i',
+                          '--catalog-client-secret', 'k', '--catalog-client-scope', 's1',
+                          '--catalog-client-scope', 's2']),
+            'create_catalog', {
+                (0, 'catalog.name'): 'my-catalog',
+                (0, 'catalog.type'): 'EXTERNAL',
+                (0, 'catalog.connection_config_info.connection_type'): 'HADOOP',
+                (0, 'catalog.connection_config_info.warehouse'): 'h',
+                (0, 'catalog.connection_config_info.authentication_parameters.authentication_type'): 'OAUTH',
+                (0, 'catalog.connection_config_info.authentication_parameters.token_uri'): 'u',
+                (0, 'catalog.connection_config_info.authentication_parameters.client_id'): 'i',
+                (0, 'catalog.connection_config_info.authentication_parameters.scopes'): ['s1', 's2'],
+            })
+        check_arguments(
+            mock_execute(['catalogs', 'create', 'my-catalog', '--type', 'external',
+                          '--storage-type', 'gcs', '--default-base-location', 'dbl',
+                          '--catalog-connection-type', 'iceberg-rest', '--iceberg-remote-catalog-name', 'i',
+                          '--catalog-uri', 'u', '--catalog-authentication-type', 'sigv4',
+                          '--catalog-role-arn', 'a', '--catalog-signing-region', 's']),
+            'create_catalog', {
+                (0, 'catalog.name'): 'my-catalog',
+                (0, 'catalog.type'): 'EXTERNAL',
+                (0, 'catalog.connection_config_info.connection_type'): 'ICEBERG_REST',
+                (0, 'catalog.connection_config_info.remote_catalog_name'): 'i',
+                (0, 'catalog.connection_config_info.uri'): 'u',
+                (0, 'catalog.connection_config_info.authentication_parameters.role_arn'): 'a',
+                (0, 'catalog.connection_config_info.authentication_parameters.signing_region'): 's',
+            })
+        check_arguments(
+            mock_execute(['catalogs', 'create', 'my-catalog', '--type', 'external',
+                          '--storage-type', 'gcs', '--default-base-location', 'dbl',
+                          '--catalog-connection-type', 'iceberg-rest', '--iceberg-remote-catalog-name', 'i',
+                          '--catalog-uri', 'u', '--catalog-authentication-type', 'sigv4',
+                          '--catalog-role-arn', 'a', '--catalog-signing-region', 's',
+                          '--catalog-role-session-name', 'n', '--catalog-external-id', 'i',
+                          '--catalog-signing-name', 'g']),
+            'create_catalog', {
+                (0, 'catalog.name'): 'my-catalog',
+                (0, 'catalog.type'): 'EXTERNAL',
+                (0, 'catalog.connection_config_info.connection_type'): 'ICEBERG_REST',
+                (0, 'catalog.connection_config_info.remote_catalog_name'): 'i',
+                (0, 'catalog.connection_config_info.uri'): 'u',
+                (0, 'catalog.connection_config_info.authentication_parameters.role_arn'): 'a',
+                (0, 'catalog.connection_config_info.authentication_parameters.signing_region'): 's',
+                (0, 'catalog.connection_config_info.authentication_parameters.role_session_name'): 'n',
+                (0, 'catalog.connection_config_info.authentication_parameters.external_id'): 'i',
+                (0, 'catalog.connection_config_info.authentication_parameters.signing_name'): 'g',
             })
 
 

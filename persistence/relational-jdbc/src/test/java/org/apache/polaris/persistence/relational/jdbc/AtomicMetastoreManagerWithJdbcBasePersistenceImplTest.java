@@ -20,6 +20,7 @@ package org.apache.polaris.persistence.relational.jdbc;
 
 import static org.apache.polaris.core.persistence.PrincipalSecretsGenerator.RANDOM_SECRETS;
 
+import java.io.InputStream;
 import java.sql.SQLException;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -28,6 +29,7 @@ import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisDefaultDiagServiceImpl;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.config.PolarisConfigurationStore;
+import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.AtomicOperationMetaStoreManager;
 import org.apache.polaris.core.persistence.BasePolarisMetaStoreManagerTest;
 import org.apache.polaris.core.persistence.PolarisTestMetaStoreManager;
@@ -44,11 +46,15 @@ public class AtomicMetastoreManagerWithJdbcBasePersistenceImplTest
   @Override
   protected PolarisTestMetaStoreManager createPolarisTestMetaStoreManager() {
     PolarisDiagnostics diagServices = new PolarisDefaultDiagServiceImpl();
-    DatasourceOperations datasourceOperations =
-        new DatasourceOperations(createH2DataSource(), new H2JdbcConfiguration());
+    DatasourceOperations datasourceOperations;
     try {
-      datasourceOperations.executeScript(
-          String.format("%s/schema-v1.sql", DatabaseType.H2.getDisplayName()));
+      datasourceOperations =
+          new DatasourceOperations(createH2DataSource(), new H2JdbcConfiguration());
+      ClassLoader classLoader = DatasourceOperations.class.getClassLoader();
+      InputStream scriptStream =
+          classLoader.getResourceAsStream(
+              String.format("%s/schema-v2.sql", DatabaseType.H2.getDisplayName()));
+      datasourceOperations.executeScript(scriptStream);
     } catch (SQLException e) {
       throw new RuntimeException(
           String.format(
@@ -56,11 +62,17 @@ public class AtomicMetastoreManagerWithJdbcBasePersistenceImplTest
           e);
     }
 
+    RealmContext realmContext = () -> "REALM";
     JdbcBasePersistenceImpl basePersistence =
-        new JdbcBasePersistenceImpl(datasourceOperations, RANDOM_SECRETS, Mockito.mock(), "REALM");
+        new JdbcBasePersistenceImpl(
+            datasourceOperations,
+            RANDOM_SECRETS,
+            Mockito.mock(),
+            realmContext.getRealmIdentifier());
     return new PolarisTestMetaStoreManager(
         new AtomicOperationMetaStoreManager(),
         new PolarisCallContext(
+            realmContext,
             basePersistence,
             diagServices,
             new PolarisConfigurationStore() {},

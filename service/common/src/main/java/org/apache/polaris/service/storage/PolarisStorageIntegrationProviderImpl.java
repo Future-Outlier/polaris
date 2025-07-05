@@ -31,38 +31,39 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
-import org.apache.polaris.core.PolarisDiagnostics;
+import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.storage.PolarisStorageActions;
 import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo;
 import org.apache.polaris.core.storage.PolarisStorageIntegration;
 import org.apache.polaris.core.storage.PolarisStorageIntegrationProvider;
 import org.apache.polaris.core.storage.StorageAccessProperty;
 import org.apache.polaris.core.storage.aws.AwsCredentialsStorageIntegration;
+import org.apache.polaris.core.storage.aws.StsClientProvider;
 import org.apache.polaris.core.storage.azure.AzureCredentialsStorageIntegration;
 import org.apache.polaris.core.storage.gcp.GcpCredentialsStorageIntegration;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.services.sts.StsClient;
 
 @ApplicationScoped
 public class PolarisStorageIntegrationProviderImpl implements PolarisStorageIntegrationProvider {
 
-  private final Supplier<StsClient> stsClientSupplier;
+  private final StsClientProvider stsClientProvider;
   private final Optional<AwsCredentialsProvider> stsCredentials;
   private final Supplier<GoogleCredentials> gcpCredsProvider;
 
   @Inject
-  public PolarisStorageIntegrationProviderImpl(StorageConfiguration storageConfiguration) {
+  public PolarisStorageIntegrationProviderImpl(
+      StorageConfiguration storageConfiguration, StsClientProvider stsClientProvider) {
     this(
-        storageConfiguration.stsClientSupplier(false),
+        stsClientProvider,
         Optional.ofNullable(storageConfiguration.stsCredentials()),
         storageConfiguration.gcpCredentialsSupplier());
   }
 
   public PolarisStorageIntegrationProviderImpl(
-      Supplier<StsClient> stsClientSupplier,
+      StsClientProvider stsClientProvider,
       Optional<AwsCredentialsProvider> stsCredentials,
       Supplier<GoogleCredentials> gcpCredsProvider) {
-    this.stsClientSupplier = stsClientSupplier;
+    this.stsClientProvider = stsClientProvider;
     this.stsCredentials = stsCredentials;
     this.gcpCredsProvider = gcpCredsProvider;
   }
@@ -80,7 +81,7 @@ public class PolarisStorageIntegrationProviderImpl implements PolarisStorageInte
       case S3:
         storageIntegration =
             (PolarisStorageIntegration<T>)
-                new AwsCredentialsStorageIntegration(stsClientSupplier.get(), stsCredentials);
+                new AwsCredentialsStorageIntegration(stsClientProvider, stsCredentials);
         break;
       case GCS:
         storageIntegration =
@@ -99,7 +100,7 @@ public class PolarisStorageIntegrationProviderImpl implements PolarisStorageInte
             new PolarisStorageIntegration<>("file") {
               @Override
               public EnumMap<StorageAccessProperty, String> getSubscopedCreds(
-                  @Nonnull PolarisDiagnostics diagnostics,
+                  @Nonnull CallContext callContext,
                   @Nonnull T storageConfig,
                   boolean allowListOperation,
                   @Nonnull Set<String> allowedReadLocations,

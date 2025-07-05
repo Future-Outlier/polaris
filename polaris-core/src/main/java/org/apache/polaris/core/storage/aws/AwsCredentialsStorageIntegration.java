@@ -19,7 +19,6 @@
 package org.apache.polaris.core.storage.aws;
 
 import static org.apache.polaris.core.config.FeatureConfiguration.STORAGE_CREDENTIAL_DURATION_SECONDS;
-import static org.apache.polaris.core.config.PolarisConfiguration.loadConfig;
 
 import jakarta.annotation.Nonnull;
 import java.net.URI;
@@ -29,10 +28,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.apache.polaris.core.PolarisDiagnostics;
+import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.storage.InMemoryStorageIntegration;
 import org.apache.polaris.core.storage.StorageAccessProperty;
 import org.apache.polaris.core.storage.StorageUtil;
+import org.apache.polaris.core.storage.aws.StsClientProvider.StsDestination;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.policybuilder.iam.IamConditionOperator;
 import software.amazon.awssdk.policybuilder.iam.IamEffect;
@@ -46,28 +46,37 @@ import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
 /** Credential vendor that supports generating */
 public class AwsCredentialsStorageIntegration
     extends InMemoryStorageIntegration<AwsStorageConfigurationInfo> {
-  private final StsClient stsClient;
+  private final StsClientProvider stsClientProvider;
   private final Optional<AwsCredentialsProvider> credentialsProvider;
 
-  public AwsCredentialsStorageIntegration(StsClient stsClient) {
-    this(stsClient, Optional.empty());
+  public AwsCredentialsStorageIntegration(StsClient fixedClient) {
+    this((destination) -> fixedClient);
+  }
+
+  public AwsCredentialsStorageIntegration(StsClientProvider stsClientProvider) {
+    this(stsClientProvider, Optional.empty());
   }
 
   public AwsCredentialsStorageIntegration(
-      StsClient stsClient, Optional<AwsCredentialsProvider> credentialsProvider) {
+      StsClientProvider stsClientProvider, Optional<AwsCredentialsProvider> credentialsProvider) {
     super(AwsCredentialsStorageIntegration.class.getName());
-    this.stsClient = stsClient;
+    this.stsClientProvider = stsClientProvider;
     this.credentialsProvider = credentialsProvider;
   }
 
   /** {@inheritDoc} */
   @Override
   public EnumMap<StorageAccessProperty, String> getSubscopedCreds(
-      @Nonnull PolarisDiagnostics diagnostics,
+      @Nonnull CallContext callContext,
       @Nonnull AwsStorageConfigurationInfo storageConfig,
       boolean allowListOperation,
       @Nonnull Set<String> allowedReadLocations,
       @Nonnull Set<String> allowedWriteLocations) {
+    int storageCredentialDurationSeconds =
+        callContext
+            .getPolarisCallContext()
+            .getConfigurationStore()
+            .getConfiguration(callContext.getRealmContext(), STORAGE_CREDENTIAL_DURATION_SECONDS);
     AssumeRoleRequest.Builder request =
         AssumeRoleRequest.builder()
             .externalId(storageConfig.getExternalId())
@@ -80,9 +89,16 @@ public class AwsCredentialsStorageIntegration
                         allowedReadLocations,
                         allowedWriteLocations)
                     .toJson())
-            .durationSeconds(loadConfig(STORAGE_CREDENTIAL_DURATION_SECONDS));
+            .durationSeconds(storageCredentialDurationSeconds);
     credentialsProvider.ifPresent(
         cp -> request.overrideConfiguration(b -> b.credentialsProvider(cp)));
+
+    @SuppressWarnings("resource")
+    // Note: stsClientProvider returns "thin" clients that do not need closing
+    StsClient stsClient =
+        stsClientProvider.stsClient(
+            StsDestination.of(storageConfig.getStsEndpointUri(), storageConfig.getRegion()));
+
     AssumeRoleResponse response = stsClient.assumeRole(request.build());
     EnumMap<StorageAccessProperty, String> credentialMap =
         new EnumMap<>(StorageAccessProperty.class);
@@ -102,6 +118,11 @@ public class AwsCredentialsStorageIntegration
 
     if (storageConfig.getRegion() != null) {
       credentialMap.put(StorageAccessProperty.CLIENT_REGION, storageConfig.getRegion());
+    }
+
+    URI endpointUri = storageConfig.getEndpointUri();
+    if (endpointUri != null) {
+      credentialMap.put(StorageAccessProperty.AWS_ENDPOINT, endpointUri.toString());
     }
 
     if (storageConfig.getAwsPartition().equals("aws-us-gov")

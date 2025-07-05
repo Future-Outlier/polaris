@@ -73,6 +73,7 @@ public record TestServices(
     PolarisCatalogsApi catalogsApi,
     IcebergRestCatalogApi restApi,
     IcebergRestConfigurationApi restConfigurationApi,
+    IcebergCatalogAdapter catalogAdapter,
     PolarisConfigurationStore configurationStore,
     PolarisDiagnostics polarisDiagnostics,
     RealmEntityManagerFactory entityManagerFactory,
@@ -149,12 +150,12 @@ public record TestServices(
       // Application level
       PolarisStorageIntegrationProviderImpl storageIntegrationProvider =
           new PolarisStorageIntegrationProviderImpl(
-              () -> stsClient,
+              (destination) -> stsClient,
               Optional.empty(),
               () -> GoogleCredentials.create(new AccessToken(GCP_ACCESS_TOKEN, new Date())));
       InMemoryPolarisMetaStoreManagerFactory metaStoreManagerFactory =
           new InMemoryPolarisMetaStoreManagerFactory(
-              storageIntegrationProvider, polarisDiagnostics);
+              storageIntegrationProvider, polarisDiagnostics, configurationStore);
       RealmEntityManagerFactory realmEntityManagerFactory =
           new RealmEntityManagerFactory(metaStoreManagerFactory) {};
       UserSecretsManagerFactory userSecretsManagerFactory =
@@ -163,21 +164,12 @@ public record TestServices(
       BasePersistence metaStoreSession =
           metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get();
       CallContext callContext =
-          new CallContext() {
-            @Override
-            public RealmContext getRealmContext() {
-              return realmContext;
-            }
-
-            @Override
-            public PolarisCallContext getPolarisCallContext() {
-              return new PolarisCallContext(
-                  metaStoreSession,
-                  polarisDiagnostics,
-                  configurationStore,
-                  Mockito.mock(Clock.class));
-            }
-          };
+          new PolarisCallContext(
+              realmContext,
+              metaStoreSession,
+              polarisDiagnostics,
+              configurationStore,
+              Clock.systemUTC());
       PolarisEntityManager entityManager =
           realmEntityManagerFactory.getOrCreateEntityManager(realmContext);
       PolarisMetaStoreManager metaStoreManager =
@@ -206,7 +198,7 @@ public record TestServices(
       CatalogHandlerUtils catalogHandlerUtils =
           new CatalogHandlerUtils(callContext.getRealmContext(), configurationStore);
 
-      IcebergCatalogAdapter service =
+      IcebergCatalogAdapter catalogService =
           new IcebergCatalogAdapter(
               realmContext,
               callContext,
@@ -219,8 +211,9 @@ public record TestServices(
               reservedProperties,
               catalogHandlerUtils);
 
-      IcebergRestCatalogApi restApi = new IcebergRestCatalogApi(service);
-      IcebergRestConfigurationApi restConfigurationApi = new IcebergRestConfigurationApi(service);
+      IcebergRestCatalogApi restApi = new IcebergRestCatalogApi(catalogService);
+      IcebergRestConfigurationApi restConfigurationApi =
+          new IcebergRestConfigurationApi(catalogService);
 
       CreatePrincipalResult createdPrincipal =
           metaStoreManager.createPrincipal(
@@ -271,6 +264,7 @@ public record TestServices(
           catalogsApi,
           restApi,
           restConfigurationApi,
+          catalogService,
           configurationStore,
           polarisDiagnostics,
           realmEntityManagerFactory,
