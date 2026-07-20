@@ -286,7 +286,7 @@ public class JdbcBasePersistenceImpl
           QueryGenerator.generateInsertQuery(
               ModelEvent.ALL_COLUMNS,
               ModelEvent.TABLE_NAME,
-              ModelEvent.fromEvent(events.getFirst())
+              ModelEvent.fromEvent(events.getFirst(), schemaVersion)
                   .toMap(datasourceOperations.getDatabaseType())
                   .values()
                   .stream()
@@ -304,7 +304,7 @@ public class JdbcBasePersistenceImpl
             QueryGenerator.generateInsertQuery(
                 ModelEvent.ALL_COLUMNS,
                 ModelEvent.TABLE_NAME,
-                ModelEvent.fromEvent(event)
+                ModelEvent.fromEvent(event, schemaVersion)
                     .toMap(datasourceOperations.getDatabaseType())
                     .values()
                     .stream()
