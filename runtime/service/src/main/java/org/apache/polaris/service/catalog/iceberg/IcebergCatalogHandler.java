@@ -25,6 +25,7 @@ import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CRE
 import static org.apache.polaris.service.catalog.common.ExceptionUtils.alreadyExistsExceptionForTableLikeEntity;
 import static org.apache.polaris.service.catalog.common.ExceptionUtils.notFoundExceptionForTableLikeEntity;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import io.smallrye.common.annotation.Identifier;
@@ -44,13 +45,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.apache.iceberg.BaseMetadataTable;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogUtil;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
-import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
@@ -1704,20 +1703,21 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     catalogHandlerUtils().renameView(viewCatalog, request);
   }
 
-  private @NonNull LoadTableResponse filterResponseToSnapshots(
+  @VisibleForTesting
+  @NonNull LoadTableResponse filterResponseToSnapshots(
       LoadTableResponse loadTableResponse, String snapshots) {
     if (snapshots == null || snapshots.equalsIgnoreCase(SNAPSHOTS_ALL)) {
       return loadTableResponse;
     } else if (snapshots.equalsIgnoreCase(SNAPSHOTS_REFS)) {
       TableMetadata metadata = loadTableResponse.tableMetadata();
 
-      Set<Long> referencedSnapshotIds =
-          metadata.refs().values().stream()
-              .map(SnapshotRef::snapshotId)
-              .collect(Collectors.toSet());
-
+      // suppressHistoricalSnapshots() preserves metadataLocation() while dropping unreferenced
+      // snapshots, matching org.apache.iceberg.rest.CatalogHandlers#loadTable's REFS case.
       TableMetadata filteredMetadata =
-          metadata.removeSnapshotsIf(s -> !referencedSnapshotIds.contains(s.snapshotId()));
+          TableMetadata.buildFrom(metadata)
+              .withMetadataLocation(metadata.metadataFileLocation())
+              .suppressHistoricalSnapshots()
+              .build();
 
       return LoadTableResponse.builder()
           .withTableMetadata(filteredMetadata)
