@@ -143,56 +143,16 @@ class JdbcBasePersistenceImplTest {
   @ValueSource(ints = {1, 2})
   void lookupEntityVersionsPreservesOrderAndNullsForMissing(int schemaVersion)
       throws SQLException, IOException {
-    JdbcConnectionPool dataSource =
-        JdbcConnectionPool.create(
-            "jdbc:h2:mem:lookup_versions_v"
-                + schemaVersion
-                + "_"
-                + System.nanoTime()
-                + ";DB_CLOSE_DELAY=-1",
-            "sa",
-            "");
-    DatasourceOperations real = new DatasourceOperations(dataSource, new TestJdbcConfiguration());
-    try (InputStream script = DatabaseType.H2.openInitScriptResource(schemaVersion)) {
-      real.executeScript(script);
-    }
+    DatasourceOperations real = newH2DatasourceOperations("lookup_versions_v", schemaVersion);
     // Spy so we can assert on the SQL actually issued, without blocking the real call.
     DatasourceOperations spy = Mockito.spy(real);
     doCallRealMethod().when(spy).executeSelect(any(), any());
+    TestPersistence tp = newTestPersistence(spy, schemaVersion);
+    JdbcBasePersistenceImpl impl = tp.impl();
+    PolarisCallContext callCtx = tp.callCtx();
 
-    JdbcBasePersistenceImpl impl =
-        new JdbcBasePersistenceImpl(
-            new PolarisDefaultDiagServiceImpl(),
-            spy,
-            RANDOM_SECRETS,
-            REALM_CONTEXT.getRealmIdentifier(),
-            schemaVersion);
-    PolarisCallContext callCtx = new PolarisCallContext(REALM_CONTEXT, impl);
-
-    PolarisBaseEntity e1 =
-        new PolarisBaseEntity.Builder()
-            .id(101L)
-            .catalogId(0L)
-            .parentId(0L)
-            .typeCode(PolarisEntityType.PRINCIPAL.getCode())
-            .subTypeCode(PolarisEntitySubType.NULL_SUBTYPE.getCode())
-            .name("e1")
-            .entityVersion(1)
-            .grantRecordsVersion(2)
-            .createTimestamp(System.currentTimeMillis())
-            .build();
-    PolarisBaseEntity e2 =
-        new PolarisBaseEntity.Builder()
-            .id(102L)
-            .catalogId(0L)
-            .parentId(0L)
-            .typeCode(PolarisEntityType.PRINCIPAL.getCode())
-            .subTypeCode(PolarisEntitySubType.NULL_SUBTYPE.getCode())
-            .name("e2")
-            .entityVersion(3)
-            .grantRecordsVersion(4)
-            .createTimestamp(System.currentTimeMillis())
-            .build();
+    PolarisBaseEntity e1 = newTestEntity(101L, "e1", 1, 2);
+    PolarisBaseEntity e2 = newTestEntity(102L, "e2", 3, 4);
     impl.writeEntity(callCtx, e1, false, null);
     impl.writeEntity(callCtx, e2, false, null);
 
@@ -254,6 +214,79 @@ class JdbcBasePersistenceImplTest {
     assertThat(sql).contains("LIMIT 1");
     assertThat(sql).doesNotContain("properties");
     assertThat(sql).doesNotContain("internal_properties");
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 2})
+  void lookupEntityGrantRecordsVersionDelegatesToLookupEntityVersions(int schemaVersion)
+      throws SQLException, IOException {
+    // lookupEntityGrantRecordsVersion delegates to lookupEntityVersions, whose SQL shape (and the
+    // exclusion of large property columns) is already covered by the test above; this test only
+    // needs to check the delegation's own behavioural contract.
+    DatasourceOperations datasourceOperations =
+        newH2DatasourceOperations("lookup_grant_version_v", schemaVersion);
+    TestPersistence tp = newTestPersistence(datasourceOperations, schemaVersion);
+    JdbcBasePersistenceImpl impl = tp.impl();
+    PolarisCallContext callCtx = tp.callCtx();
+
+    PolarisBaseEntity e1 = newTestEntity(201L, "e1", 1, 5);
+    PolarisBaseEntity e2 = newTestEntity(202L, "e2", 1, 9);
+    impl.writeEntity(callCtx, e1, false, null);
+    impl.writeEntity(callCtx, e2, false, null);
+
+    // Behavioural: returns the stored grant-records version per entity, 0 for a missing entity.
+    assertThat(impl.lookupEntityGrantRecordsVersion(callCtx, 0L, 201L)).isEqualTo(5);
+    assertThat(impl.lookupEntityGrantRecordsVersion(callCtx, 0L, 202L)).isEqualTo(9);
+    assertThat(impl.lookupEntityGrantRecordsVersion(callCtx, 0L, 999L)).isEqualTo(0);
+  }
+
+  private static DatasourceOperations newH2DatasourceOperations(
+      String dbNamePrefix, int schemaVersion) throws SQLException, IOException {
+    JdbcConnectionPool dataSource =
+        JdbcConnectionPool.create(
+            "jdbc:h2:mem:"
+                + dbNamePrefix
+                + schemaVersion
+                + "_"
+                + System.nanoTime()
+                + ";DB_CLOSE_DELAY=-1",
+            "sa",
+            "");
+    DatasourceOperations operations =
+        new DatasourceOperations(dataSource, new TestJdbcConfiguration());
+    try (InputStream script = DatabaseType.H2.openInitScriptResource(schemaVersion)) {
+      operations.executeScript(script);
+    }
+    return operations;
+  }
+
+  private static TestPersistence newTestPersistence(
+      DatasourceOperations datasourceOperations, int schemaVersion) {
+    JdbcBasePersistenceImpl impl =
+        new JdbcBasePersistenceImpl(
+            new PolarisDefaultDiagServiceImpl(),
+            datasourceOperations,
+            RANDOM_SECRETS,
+            REALM_CONTEXT.getRealmIdentifier(),
+            schemaVersion);
+    return new TestPersistence(impl, new PolarisCallContext(REALM_CONTEXT, impl));
+  }
+
+  private record TestPersistence(JdbcBasePersistenceImpl impl, PolarisCallContext callCtx) {}
+
+  private static PolarisBaseEntity newTestEntity(
+      long id, String name, int entityVersion, int grantRecordsVersion) {
+    return new PolarisBaseEntity.Builder()
+        .id(id)
+        .catalogId(0L)
+        .parentId(0L)
+        .typeCode(PolarisEntityType.PRINCIPAL.getCode())
+        .subTypeCode(PolarisEntitySubType.NULL_SUBTYPE.getCode())
+        .name(name)
+        .entityVersion(entityVersion)
+        .grantRecordsVersion(grantRecordsVersion)
+        .createTimestamp(System.currentTimeMillis())
+        .build();
   }
 
   private static final class TestJdbcConfiguration implements RelationalJdbcConfiguration {

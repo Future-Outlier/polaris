@@ -623,14 +623,10 @@ public class JdbcBasePersistenceImpl implements BasePersistence, IntegrationPers
   @Override
   public int lookupEntityGrantRecordsVersion(
       @NonNull PolarisCallContext callCtx, long catalogId, long entityId) {
-
-    Map<String, Object> params =
-        Map.of("catalog_id", catalogId, "id", entityId, "realm_id", realmId);
-    PolarisBaseEntity b =
-        getPolarisBaseEntity(
-            QueryGenerator.generateSelectQuery(
-                ModelEntity.getAllColumnNames(schemaVersion), ModelEntity.TABLE_NAME, params));
-    return b == null ? 0 : b.getGrantRecordsVersion();
+    List<PolarisChangeTrackingVersions> versions =
+        lookupEntityVersions(callCtx, List.of(new PolarisEntityId(catalogId, entityId)));
+    PolarisChangeTrackingVersions version = versions.getFirst();
+    return version == null ? 0 : version.grantRecordsVersion();
   }
 
   @Override
